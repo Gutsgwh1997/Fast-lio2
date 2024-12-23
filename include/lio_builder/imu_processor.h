@@ -3,6 +3,8 @@
 #include "commons.h"
 #include <Eigen/Geometry>
 
+#include "iekf/esekfom.h"
+
 namespace fastlio
 {
     struct Pose
@@ -21,7 +23,9 @@ namespace fastlio
     class IMUProcessor
     {
     public:
-        IMUProcessor(std::shared_ptr<esekfom::esekf<state_ikfom, 12, input_ikfom>> kf);
+        explicit IMUProcessor(std::shared_ptr<esekfom::esekf<state_ikfom, 12, input_ikfom>> kf);
+
+        explicit IMUProcessor(const std::shared_ptr<air_slam::esekfom::esekf>& kf);
 
         void init(const MeasureGroup &meas);
 
@@ -56,7 +60,9 @@ namespace fastlio
         int max_init_count_ = 20;
         Eigen::Matrix3d rot_ext_;
         Eigen::Vector3d pos_ext_;
-        std::shared_ptr<esekfom::esekf<state_ikfom, 12, input_ikfom>> kf_;
+        std::shared_ptr<esekfom::esekf<state_ikfom, 12, input_ikfom>> kf_r_;
+
+        std::shared_ptr<air_slam::esekfom::esekf> kf_;
 
         IMU last_imu_;
         bool init_flag_ = false;
@@ -70,6 +76,7 @@ namespace fastlio
 
         std::vector<Pose> imu_poses_;
 
+        // 上一帧激光数据的尾点时间
         double last_lidar_time_end_;
 
         Eigen::Vector3d gyro_cov_;

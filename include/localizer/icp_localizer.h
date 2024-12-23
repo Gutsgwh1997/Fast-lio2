@@ -1,16 +1,16 @@
 #pragma once
 #include <string>
-#include "commons.h"
 #include <pcl/io/pcd_io.h>
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/filters/passthrough.h>
 #include <pcl/registration/icp.h>
 #include <pcl/features/normal_3d.h>
 
+#include "commons.h"
+
 namespace fastlio
 {
-
-    struct LocalizerParams
+    struct RelocalizerParams
     {
         double rough_resolution = 0.5;
         double refine_resolution = 0.2;
@@ -55,9 +55,9 @@ namespace fastlio
 
         static PointCloudXYZI::Ptr addNorm(pcl::PointCloud<pcl::PointXYZI>::Ptr cloud);
 
-        Eigen::Matrix4d align(pcl::PointCloud<pcl::PointXYZI>::Ptr source, Eigen::Matrix4d init_guess);
+        Eigen::Matrix4d align(pcl::PointCloud<pcl::PointXYZI>::Ptr source, const Eigen::Matrix4d& init_guess);
 
-        Eigen::Matrix4d multi_align_sync(pcl::PointCloud<pcl::PointXYZI>::Ptr source, Eigen::Matrix4d init_guess);
+        Eigen::Matrix4d multi_align_sync(pcl::PointCloud<pcl::PointXYZI>::Ptr source, const Eigen::Matrix4d& init_guess);
 
         PointCloudXYZI::Ptr getRoughMap() { return rough_map_; }
 

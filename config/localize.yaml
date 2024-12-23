@@ -1,8 +1,8 @@
 map_frame: map
 local_frame: local
 body_frame: body
-imu_topic: /livox/imu
-livox_topic: /livox/lidar
+imu_topic: /imu/data_raw
+rs_m1_topic: /os1_points
 
 local_rate: 30.0
 loop_rate: 1.0
@@ -14,8 +14,8 @@ lio_builder:
   resolution: 0.2
   move_thresh: 1.5
   align_gravity: true
-  imu_ext_rot: [1, 0, 0, 0, 1, 0, 0, 0, 1]
-  imu_ext_pos: [-0.011, -0.02329, 0.04412]
+  imu_ext_rot: [1, 0, 0, 0, -1, 0, 0, 0, -1]
+  imu_ext_pos: [0.065, 0.025, -0.18]
 
 localizer:
   refine_resolution: 0.2
@@ -26,4 +26,3 @@ localizer:
   xy_offset: 1.0
   yaw_offset: 0
   yaw_resolution: 0.5
-

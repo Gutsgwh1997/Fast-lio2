@@ -37,7 +37,7 @@ namespace fastlio
         initialized_ = true;
     }
 
-    Eigen::Matrix4d IcpLocalizer::align(pcl::PointCloud<pcl::PointXYZI>::Ptr source, Eigen::Matrix4d init_guess)
+    Eigen::Matrix4d IcpLocalizer::align(pcl::PointCloud<pcl::PointXYZI>::Ptr source, const Eigen::Matrix4d &init_guess)
     {
         success_ = false;
         Eigen::Vector3d xyz = init_guess.block<3, 1>(0, 3);
@@ -109,13 +109,14 @@ namespace fastlio
         thresh_ = thresh;
     }
 
-    void IcpLocalizer::setSearchParams(double xy_offset, int yaw_offset, double yaw_res){
+    void IcpLocalizer::setSearchParams(double xy_offset, int yaw_offset, double yaw_res)
+    {
         xy_offset_ = xy_offset;
         yaw_offset_ = yaw_offset;
         yaw_resolution_ = yaw_res;
     }
 
-    Eigen::Matrix4d IcpLocalizer::multi_align_sync(pcl::PointCloud<pcl::PointXYZI>::Ptr source, Eigen::Matrix4d init_guess)
+    Eigen::Matrix4d IcpLocalizer::multi_align_sync(pcl::PointCloud<pcl::PointXYZI>::Ptr source, const Eigen::Matrix4d &init_guess)
     {
         success_ = false;
         Eigen::Vector3d xyz = init_guess.block<3, 1>(0, 3);

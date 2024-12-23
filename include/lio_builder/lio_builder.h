@@ -1,9 +1,12 @@
 #pragma once
 
+#include "parameters.h"
 #include "commons.h"
 #include "imu_processor.h"
 #include "ikd-Tree/ikd_Tree.h"
 #include <pcl/filters/voxel_grid.h>
+
+#include "iekf/esekfom.h"
 
 namespace fastlio
 {
@@ -15,7 +18,7 @@ namespace fastlio
         MAPPING
     };
 
-    struct LocalMap
+    struct LocalMapInfo
     {
         double cube_len;
         double det_range;
@@ -24,8 +27,11 @@ namespace fastlio
         BoxPointType local_map_corner;
         std::vector<BoxPointType> cub_to_rm;
     };
+
+    // todo::参数统一放到一个文件，一个结构体中
     struct LioParams
     {
+        // todo::原始fast-lio中通过参数服务器读取
         double resolution = 0.1;
         double esikf_min_iteration = 2;
         double esikf_max_iteration = 5;
@@ -54,7 +60,7 @@ namespace fastlio
 
         void sharedUpdateFunc(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data);
 
-        PointCloudXYZI::Ptr transformToWorld(const PointCloudXYZI::Ptr cloud);
+        PointCloudXYZI::Ptr transformToWorld(const PointCloudXYZI::Ptr& cloud);
 
         void trimMap();
 
@@ -62,10 +68,10 @@ namespace fastlio
 
         void reset();
 
-        state_ikfom currentState() const { return kf_->get_x(); }
-        Status currentStatus() const { return status; }
+        const state_ikfom& currentState() const { return kf_r_->get_x(); }
+        Status currentStatus() const { return status_; }
         std::shared_ptr<KD_TREE<PointType>> getIKDtree() { return ikdtree_; }
-        std::shared_ptr<esekfom::esekf<state_ikfom, 12, input_ikfom>> getKF() { return kf_; }
+        std::shared_ptr<esekfom::esekf<state_ikfom, 12, input_ikfom>> getKF() { return kf_r_; }
         std::shared_ptr<IMUProcessor> getIMUProcessor() { return imu_processor_; }
         PointCloudXYZI::Ptr cloudWorld() { return cloud_down_world_; }
         PointCloudXYZI::Ptr cloudLidar() { return cloud_down_lidar_; }
@@ -75,14 +81,17 @@ namespace fastlio
 
     private:
         LioParams params_;
-        Status status = Status::INITIALIZE;
+        Status status_ = Status::INITIALIZE;
         std::shared_ptr<IMUProcessor> imu_processor_;
-        std::shared_ptr<esekfom::esekf<state_ikfom, 12, input_ikfom>> kf_;
+        std::shared_ptr<esekfom::esekf<state_ikfom, 12, input_ikfom>> kf_r_;
+
+        std::shared_ptr<air_slam::esekfom::esekf> kf_;
+
         std::shared_ptr<KD_TREE<PointType>> ikdtree_;
         pcl::VoxelGrid<PointType> down_size_filter_;
 
         PointCloudXYZI::Ptr cloud_undistorted_lidar_;
-        LocalMap local_map_;
+        LocalMapInfo local_map_;
 
         bool extrinsic_est_en_;
         PointCloudXYZI::Ptr cloud_down_lidar_;

@@ -2,8 +2,8 @@ cmake_minimum_required(VERSION 3.0.2)
 project(fastlio)
 
 
-ADD_COMPILE_OPTIONS(-std=c++14 )
-ADD_COMPILE_OPTIONS(-std=c++14 )
+add_compile_options(-std=c++14 )
+add_compile_options(-std=c++14 )
 set( CMAKE_CXX_FLAGS "-std=c++14 -O3" )
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fexceptions" )
@@ -46,18 +46,14 @@ find_package(catkin REQUIRED COMPONENTS
   sensor_msgs
   geometry_msgs
   pcl_ros
-  livox_ros_driver2
   message_generation
   eigen_conversions
 )
 
 find_package(PCL REQUIRED)
 find_package(Eigen3 REQUIRED)
-
-# find_package( GTSAMCMakeTools )
 find_package(GTSAM REQUIRED)
-
-
+find_package(Sophus REQUIRED)
 
 add_service_files(
   FILES
@@ -89,30 +85,25 @@ include_directories(
   ${catkin_INCLUDE_DIRS}
   ${EIGEN3_INCLUDE_DIR}
   ${PCL_INCLUDE_DIRS}
+  ${Sophus_INCLUDE_DIRS}
 )
 
-set(COMMON_SRC src/commons.cpp)
+set(COMMON_SRC src/commons.cpp src/commons_refactor.cpp)
 set(KDTREE_SRC include/ikd-Tree/ikd_Tree.cpp)
-set(LIOBUILDER_SRC_LIST src/lio_builder/imu_processor.cpp src/lio_builder/lio_builder.cpp)
+set(IEKF_SRC src/iekf/use_ikfom.cpp src/iekf/esekfom.cpp)
+set(LIOBUILDER_SRC_LIST src/lio_builder/imu_processor.cpp src/lio_builder/lio_builder.cpp src/lio_builder/loop_closure.cpp)
 set(ICPLOCALIZER_SRC src/localizer/icp_localizer.cpp)
-set(SRC_LIST ${COMMON_SRC} ${KDTREE_SRC} ${LIOBUILDER_SRC_LIST} ${ICPLOCALIZER_SRC})
+set(SRC_LIST ${COMMON_SRC} ${KDTREE_SRC} ${IEKF_SRC} ${LIOBUILDER_SRC_LIST} ${ICPLOCALIZER_SRC})
 
 
 
 add_executable(map_builder_node src/map_builder_node.cpp ${SRC_LIST})
-
 target_link_libraries(map_builder_node
-  ${catkin_LIBRARIES} ${PCL_LIBRARIES} gtsam
+  ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${Sophus_LIBRARIES} gtsam
 )
+
 
 add_executable(localizer_node src/localizer_node.cpp ${SRC_LIST})
-
 target_link_libraries(localizer_node
-  ${catkin_LIBRARIES} ${PCL_LIBRARIES}
-)
-
-add_executable(temp_node src/temp_node.cpp ${SRC_LIST})
-
-target_link_libraries(temp_node
-  ${catkin_LIBRARIES} ${PCL_LIBRARIES}
+  ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${Sophus_LIBRARIES} gtsam
 )

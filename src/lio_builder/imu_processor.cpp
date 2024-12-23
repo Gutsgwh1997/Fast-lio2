@@ -3,6 +3,15 @@
 namespace fastlio
 {
     IMUProcessor::IMUProcessor(std::shared_ptr<esekfom::esekf<state_ikfom, 12, input_ikfom>> kf)
+        : kf_r_(kf), init_count_(0), last_lidar_time_end_(0.0),
+          mean_acc_(Eigen::Vector3d::Zero()), mean_gyro_(Eigen::Vector3d::Zero()),
+          last_acc_(Eigen::Vector3d::Zero()), last_gyro_(Eigen::Vector3d::Zero()),
+          rot_ext_(Eigen::Matrix3d::Identity()), pos_ext_(Eigen::Vector3d::Zero())
+    {
+        Q_ = process_noise_cov();
+    }
+
+    IMUProcessor::IMUProcessor(const std::shared_ptr<air_slam::esekfom::esekf> &kf)
         : kf_(kf), init_count_(0), last_lidar_time_end_(0.0),
           mean_acc_(Eigen::Vector3d::Zero()), mean_gyro_(Eigen::Vector3d::Zero()),
           last_acc_(Eigen::Vector3d::Zero()), last_gyro_(Eigen::Vector3d::Zero()),
@@ -36,10 +45,12 @@ namespace fastlio
     void IMUProcessor::init(const MeasureGroup &meas)
     {
         if (meas.imus.empty())
+        {
+            LOG_WARN("IMU data is empty, can not initialize!");
             return;
+        }
 
-        // 静态初始化，估计重力和角速度偏置
-
+        // !静态初始化，估计重力和角速度偏置
         for (const auto &imu : meas.imus)
         {
             init_count_++;
@@ -47,43 +58,48 @@ namespace fastlio
             mean_gyro_ += (imu.gyro - mean_gyro_) / init_count_;
         }
         if (init_count_ < max_init_count_)
+        {
+            LOG_DEBUG("Imu init count : %d not enough.", init_count_);
             return;
+        }
+        LOG_INFO("IMU init finish, mean acc: %f %f %f, mean gyro: %f %f %f.",
+                 mean_acc_(0), mean_acc_(1), mean_acc_(2),
+                 mean_gyro_(0), mean_gyro_(1), mean_gyro_(2));
         init_flag_ = true;
 
         // 设置初始化状态
-        state_ikfom state = kf_->get_x();
-        state.offset_R_L_I = rot_ext_;
-        state.offset_T_L_I = pos_ext_;
-        state.bg = mean_gyro_;
-        // TODO: 对于初始为非水平放置的情况进行重力对齐
+        state_ikfom init_state = kf_r_->get_x();
+        init_state.offset_R_L_I = rot_ext_;
+        init_state.offset_T_L_I = pos_ext_;
+        init_state.bg = mean_gyro_;
+
+        // 对于初始为非水平放置的情况进行重力对齐
         if (align_gravity_)
         {
-            state.rot = Eigen::Quaterniond::FromTwoVectors((-mean_acc_).normalized(), Eigen::Vector3d(0.0, 0.0, -1.0));
-            state.grav = S2(Eigen::Vector3d(0, 0, -G_m_s2));
+            init_state.rot = Eigen::Quaterniond::FromTwoVectors((-mean_acc_).normalized(), Eigen::Vector3d(0.0, 0.0, -1.0));
+            init_state.grav = S2(Eigen::Vector3d(0, 0, -G_m_s2));
         }
         else
         {
-            state.grav = S2(-mean_acc_ / mean_acc_.norm() * G_m_s2);
+            init_state.grav = S2(-mean_acc_ / mean_acc_.norm() * G_m_s2);
         }
+        kf_r_->change_x(init_state);
 
-        kf_->change_x(state);
-
-        // 初始化噪声的协方差矩阵
-        esekfom::esekf<state_ikfom, 12, input_ikfom>::cov init_P = kf_->get_P();
+        // !初始化噪声的协方差矩阵[外参，零偏，重力]
+        esekfom::esekf<state_ikfom, 12, input_ikfom>::cov init_P = kf_r_->get_P();
         init_P.setIdentity();
         init_P(6, 6) = init_P(7, 7) = init_P(8, 8) = 0.00001;
         init_P(9, 9) = init_P(10, 10) = init_P(11, 11) = 0.00001;
         init_P(15, 15) = init_P(16, 16) = init_P(17, 17) = 0.0001;
         init_P(18, 18) = init_P(19, 19) = init_P(20, 20) = 0.001;
         init_P(21, 21) = init_P(22, 22) = 0.00001;
-        kf_->change_P(init_P);
+        kf_r_->change_P(init_P);
 
         last_imu_ = meas.imus.back();
     }
 
     void IMUProcessor::undistortPointcloud(const MeasureGroup &meas, PointCloudXYZI::Ptr &out)
     {
-
         std::deque<IMU> v_imus(meas.imus.begin(), meas.imus.end());
         v_imus.push_front(last_imu_);
         const double imu_time_begin = v_imus.front().timestamp;
@@ -92,11 +108,10 @@ namespace fastlio
         const double lidar_time_end = meas.lidar_time_end;
 
         out = meas.lidar;
-
-        std::sort(out->points.begin(), out->points.end(), [](PointType &p1, PointType &p2) -> bool
+        std::sort(out->points.begin(), out->points.end(), [](const PointType &p1, const PointType &p2) -> bool
                   { return p1.curvature < p2.curvature; });
 
-        state_ikfom state = kf_->get_x();
+        state_ikfom state = kf_r_->get_x();
         imu_poses_.clear();
         imu_poses_.emplace_back(0.0, last_acc_, last_gyro_, state.vel, state.pos, state.rot.toRotationMatrix());
 
@@ -108,29 +123,33 @@ namespace fastlio
         // 计算每一帧IMU的位姿
         for (auto it_imu = v_imus.begin(); it_imu < (v_imus.end() - 1); it_imu++)
         {
-            IMU &head = *it_imu;
-            IMU &tail = *(it_imu + 1);
+            const IMU &head = *it_imu;
+            const IMU &tail = *(it_imu + 1);
             if (tail.timestamp < last_lidar_time_end_)
+            {
+                LOG_WARN("Would not happen, imu tail timestamp < last_lidar_time_end!");
                 continue;
-            gyro_val = 0.5 * (head.gyro + tail.gyro);
-            acc_val = 0.5 * (head.acc + head.acc);
+            }
+
             // normalize acc
+            acc_val = 0.5 * (head.acc + head.acc);
             acc_val = acc_val * G_m_s2 / mean_acc_.norm();
+            gyro_val = 0.5 * (head.gyro + tail.gyro);
 
             if (head.timestamp < last_lidar_time_end_)
                 dt = tail.timestamp - last_lidar_time_end_;
             else
                 dt = tail.timestamp - head.timestamp;
 
+            inp.acc = acc_val;
+            inp.gyro = gyro_val;
             Q_.block<3, 3>(0, 0).diagonal() = gyro_cov_;
             Q_.block<3, 3>(3, 3).diagonal() = acc_cov_;
             Q_.block<3, 3>(6, 6).diagonal() = gyro_bias_cov_;
             Q_.block<3, 3>(9, 9).diagonal() = acc_bias_cov_;
-            inp.acc = acc_val;
-            inp.gyro = gyro_val;
-            kf_->predict(dt, Q_, inp);
+            kf_r_->predict(dt, Q_, inp);
 
-            state = kf_->get_x();
+            state = kf_r_->get_x();
 
             last_gyro_ = gyro_val - state.bg;
             last_acc_ = state.rot.toRotationMatrix() * (acc_val - state.ba);
@@ -141,21 +160,20 @@ namespace fastlio
         }
 
         // 计算最后一个点云的位姿
-        // double sign = lidar_time_end > imu_time_end ? 1.0 : -1.0;
         dt = lidar_time_end - imu_time_end;
-        kf_->predict(dt, Q_, inp);
+        kf_r_->predict(dt, Q_, inp);
 
         last_imu_ = v_imus.back();
         last_lidar_time_end_ = lidar_time_end;
 
-        state = kf_->get_x();
+        state = kf_r_->get_x();
         state.rot;
         Eigen::Matrix3d cur_rot = state.rot.toRotationMatrix();
         Eigen::Vector3d cur_pos = state.pos;
         Eigen::Matrix3d cur_rot_ext = state.offset_R_L_I.toRotationMatrix();
         Eigen::Vector3d cur_pos_ext = state.offset_T_L_I;
 
-        // 畸变矫正
+        // 点云畸变矫正
         auto it_pcl = out->points.end() - 1;
         for (auto it_kp = imu_poses_.end() - 1; it_kp != imu_poses_.begin(); it_kp--)
         {
@@ -190,9 +208,11 @@ namespace fastlio
     {
         if (!init_flag_)
         {
+            // *1、初始化滤波器初始状态x与协方差P矩阵
             init(meas);
             return false;
         }
+        // *2、24维状态递推与点云畸变矫正
         undistortPointcloud(meas, out);
         return true;
     }
@@ -200,7 +220,7 @@ namespace fastlio
     void IMUProcessor::reset()
     {
         init_count_ = 0;
-        init_flag_ = false;  
+        init_flag_ = false;
         mean_acc_ = Eigen::Vector3d::Zero();
         mean_gyro_ = Eigen::Vector3d::Zero();
     }

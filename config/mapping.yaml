@@ -1,19 +1,27 @@
 map_frame: map
 local_frame: local
 body_frame: body
-imu_topic: /livox/imu
-livox_topic: /livox/lidar
+imu_topic: /imu/data_raw
+rs_m1_topic: /os1_points
 
-local_rate: 20.0
+# 回环检测线程频率
 loop_rate: 1.0
+# 局部构图线程频率
+local_rate: 20.0
+
 lio_builder:
-  det_range: 100.0
+  # 局部地图维护长度
   cube_len: 500.0
+  # 单帧点云观测范围
+  det_range: 100.0
+  # 单帧点云降采样分辨率
   resolution: 0.2
+  # 距离边界move_thresh * det_range时移动local_ikdtree
   move_thresh: 1.5
+  # 初始化时是否对齐重力
   align_gravity: true
-  imu_ext_rot: [1, 0, 0, 0, 1, 0, 0, 0, 1]
-  imu_ext_pos: [-0.011, -0.02329, 0.04412]
+  imu_ext_rot: [1, 0, 0, 0, -1, 0, 0, 0, -1]
+  imu_ext_pos: [0.065, 0.025, -0.18]
 
 loop_closure:
   activate: true
@@ -25,4 +33,3 @@ loop_closure:
   submap_resolution: 0.25
   submap_search_num: 25
   loop_icp_thresh: 0.1
-

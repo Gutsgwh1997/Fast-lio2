@@ -1,6 +1,7 @@
 #pragma once
 #include <mutex>
 #include <string>
+#include <cstdint>
 #include <queue>
 #include <Eigen/Core>
 #include <Eigen/Geometry>
@@ -9,12 +10,13 @@
 #include <pcl/point_cloud.h>
 #include <sensor_msgs/Imu.h>
 #include <sensor_msgs/PointCloud2.h>
-#include <livox_ros_driver2/CustomMsg.h>
 #include "IKFoM_toolkit/esekfom/esekfom.hpp"
 
 #include <nav_msgs/Odometry.h>
 #include <geometry_msgs/TransformStamped.h>
 #include <pcl_conversions/pcl_conversions.h>
+
+#include "logger.h"
 
 namespace fastlio
 {
@@ -23,11 +25,15 @@ namespace fastlio
 #define SKEW_SYM_MATRX(v) 0.0, -v[2], v[1], v[2], 0.0, -v[0], -v[1], v[0], 0.0
 
 #define NUM_MAX_POINTS (10000)
+
     const double G_m_s2 = 9.81;
+
+    extern bool terminate_flag;
+
     typedef pcl::PointXYZINormal PointType;
     typedef pcl::PointCloud<PointType> PointCloudXYZI;
     typedef std::vector<PointType, Eigen::aligned_allocator<PointType>> PointVector;
-    // typedef esekfom::esekf<state_ikfom, 12, input_ikfom> ESEKF;
+
     struct IMU
     {
         IMU() : acc(Eigen::Vector3d::Zero()), gyro(Eigen::Vector3d::Zero()) {}
@@ -40,7 +46,7 @@ namespace fastlio
         Eigen::Vector3d gyro;
     };
 
-    bool esti_plane(Eigen::Vector4d &out, const PointVector &points, const double &thresh);
+    bool esti_plane(Eigen::Vector4d &out, const PointVector &points, double thresh);
 
     float sq_dist(const PointType &p1, const PointType &p2);
 
@@ -49,6 +55,7 @@ namespace fastlio
     typedef MTK::S2<double, 98090, 10000, 1> S2;
     typedef MTK::vect<1, double> vect1;
     typedef MTK::vect<2, double> vect2;
+
     MTK_BUILD_MANIFOLD(state_ikfom,
                        ((vect3, pos))((SO3, rot))((SO3, offset_R_L_I))((vect3, offset_T_L_I))((vect3, vel))((vect3, bg))((vect3, ba))((S2, grav)));
 
@@ -86,7 +93,58 @@ namespace fastlio
             return Eye3;
         }
     }
+
+    struct Pose6D
+    {
+        Pose6D(int i, double t, Eigen::Matrix3d lr, Eigen::Vector3d lp) : index(i), time(t), local_rot(lr), local_pos(lp) {}
+        void setGlobalPose(const Eigen::Matrix3d &gr, const Eigen::Vector3d &gp)
+        {
+            global_rot = gr;
+            global_pos = gp;
+        }
+        void addOffset(const Eigen::Matrix3d &offset_rot, const Eigen::Vector3d &offset_pos)
+        {
+            global_rot = offset_rot * local_rot;
+            global_pos = offset_rot * local_pos + offset_pos;
+        }
+
+        void getOffset(Eigen::Matrix3d &offset_rot, Eigen::Vector3d &offset_pos)
+        {
+            offset_rot = global_rot * local_rot.transpose();
+            offset_pos = -global_rot * local_rot.transpose() * local_pos + global_pos;
+        }
+        int index;
+        double time;
+        Eigen::Matrix3d local_rot;
+        Eigen::Vector3d local_pos;
+        Eigen::Matrix3d global_rot;
+        Eigen::Vector3d global_pos;
+    };
+
+    struct LoopPair
+    {
+        LoopPair(int p, int c, float s, Eigen::Matrix3d &dr, Eigen::Vector3d &dp) : pre_idx(p), cur_idx(c), score(s), diff_rot(dr), diff_pos(dp) {}
+        int pre_idx;
+        int cur_idx;
+        Eigen::Matrix3d diff_rot;
+        Eigen::Vector3d diff_pos;
+        double score;
+    };
+
+    struct SharedData
+    {
+        bool key_pose_added = false;
+        std::mutex mutex;
+        Eigen::Matrix3d offset_rot = Eigen::Matrix3d::Identity();
+        Eigen::Vector3d offset_pos = Eigen::Vector3d::Zero();
+        std::vector<Pose6D> key_poses;
+        std::vector<LoopPair> loop_pairs;
+        std::vector<std::pair<int, int>> loop_history;
+        std::vector<fastlio::PointCloudXYZI::Ptr> cloud_history;
+    };
+
 }
+
 struct ImuData
 {
     std::string topic;
@@ -105,9 +163,33 @@ struct LivoxData
     double blind = 0.5;
     int filter_num = 3;
     double last_timestamp = 0;
-    void callback(const livox_ros_driver2::CustomMsg::ConstPtr &msg);
-    void livox2pcl(const livox_ros_driver2::CustomMsg::ConstPtr &msg, fastlio::PointCloudXYZI::Ptr &out);
+    void callback(const sensor_msgs::PointCloud2::ConstPtr &msg) {}
+    void livox2pcl(const sensor_msgs::PointCloud2::ConstPtr &msg, fastlio::PointCloudXYZI::Ptr &out) {}
 };
+
+struct RobosenseM1Data
+{
+    struct EIGEN_ALIGN16 Point
+    {
+        PCL_ADD_POINT4D;
+        float intensity;
+        std::uint16_t ring; // 使用 std::uint16_t
+        double timestamp;
+        EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+    };
+
+    std::string topic;
+    std::mutex mutex;
+    std::deque<fastlio::PointCloudXYZI::Ptr> buffer;
+    std::deque<double> time_buffer;
+    double blind = 0.6;
+    int filter_num = 2;
+    double last_timestamp = 0;
+    void callback(const sensor_msgs::PointCloud2::ConstPtr &msg);
+    bool robosense_m1_2pcl(const sensor_msgs::PointCloud2::ConstPtr &msg, fastlio::PointCloudXYZI::Ptr &out, double &s_time);
+};
+POINT_CLOUD_REGISTER_POINT_STRUCT(RobosenseM1Data::Point,
+                                  (float, x, x)(float, y, y)(float, z, z)(float, intensity, intensity)(std::uint16_t, ring, ring)(double, timestamp, timestamp))
 
 struct MeasureGroup
 {
@@ -116,7 +198,7 @@ struct MeasureGroup
     bool lidar_pushed = false;
     fastlio::PointCloudXYZI::Ptr lidar;
     std::deque<fastlio::IMU> imus;
-    bool syncPackage(ImuData &imu_data, LivoxData &livox_data);
+    bool syncPackage(ImuData &imu_data, RobosenseM1Data &lidar_data);
 };
 
 nav_msgs::Odometry eigen2Odometry(const Eigen::Matrix3d &rot, const Eigen::Vector3d &pos, const std::string &frame_id, const std::string &child_frame_id, const double &timestamp);

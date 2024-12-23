@@ -2,7 +2,9 @@
 
 namespace fastlio
 {
-    bool esti_plane(Eigen::Vector4d &out, const PointVector &points, const double &thresh)
+    bool terminate_flag = false;
+
+    bool esti_plane(Eigen::Vector4d &out, const PointVector &points, double thresh)
     {
         Eigen::Matrix<double, NUM_MATCH_POINTS, 3> A;
         Eigen::Matrix<double, NUM_MATCH_POINTS, 1> b;
@@ -113,68 +115,88 @@ void ImuData::callback(const sensor_msgs::Imu::ConstPtr &msg)
                         msg->angular_velocity.z);
 }
 
-void LivoxData::callback(const livox_ros_driver2::CustomMsg::ConstPtr &msg)
+void RobosenseM1Data::callback(const sensor_msgs::PointCloud2::ConstPtr &msg)
 {
+    // rs_m1激光时间戳是尾点时间戳
     std::lock_guard<std::mutex> lock(mutex);
     double timestamp = msg->header.stamp.toSec();
     if (timestamp < last_timestamp)
     {
-        ROS_WARN("livox loop back, clear buffer, last_timestamp: %f  current_timestamp: %f", last_timestamp, timestamp);
         buffer.clear();
         time_buffer.clear();
+        LOG_WARN("robosense m1 lidat loop back, clear buffer, last_timestamp: %f  current_timestamp: %f", last_timestamp, timestamp);
     }
     last_timestamp = timestamp;
+    double s_pt_timestamp = 0.0;
     fastlio::PointCloudXYZI::Ptr ptr(new fastlio::PointCloudXYZI());
-    livox2pcl(msg, ptr);
-    // ROS_INFO("size: %lu",ptr->size());
-    buffer.push_back(ptr);
-    time_buffer.push_back(last_timestamp);
+    if (robosense_m1_2pcl(msg, ptr, s_pt_timestamp))
+    {
+        buffer.push_back(ptr);
+        time_buffer.push_back(s_pt_timestamp);
+    }
 }
 
-void LivoxData::livox2pcl(const livox_ros_driver2::CustomMsg::ConstPtr &msg, fastlio::PointCloudXYZI::Ptr &out)
+bool RobosenseM1Data::robosense_m1_2pcl(const sensor_msgs::PointCloud2::ConstPtr &msg, fastlio::PointCloudXYZI::Ptr &out, double &s_time)
 {
-    int point_num = msg->point_num;
+    pcl::PointCloud<RobosenseM1Data::Point> pcl_pts;
+    pcl::fromROSMsg(*msg, pcl_pts);
+    if (pcl_pts.points.empty())
+    {
+        LOG_WARN("Empty rs m1 lidar points!");
+        return false;
+    }
+
+    int point_num = pcl_pts.points.size();
     out->clear();
     out->reserve(point_num / filter_num + 1);
-    uint valid_num = 0;
-    for (uint i = 0; i < point_num; i++)
+    s_time = pcl_pts.points.front().timestamp;
+
+    for (int i = 0; i < point_num; i++)
     {
-        if ((msg->points[i].line < 4) && ((msg->points[i].tag & 0x30) == 0x10 || (msg->points[i].tag & 0x30) == 0x00))
-        {
-            valid_num++;
-            if (valid_num % filter_num != 0)
-                continue;
-            fastlio::PointType p;
-            p.x = msg->points[i].x;
-            p.y = msg->points[i].y;
-            p.z = msg->points[i].z;
-            p.intensity = msg->points[i].reflectivity;
-            p.curvature = msg->points[i].offset_time / float(1000000); // 纳秒->毫秒
-            if ((p.x * p.x + p.y * p.y + p.z * p.z > (blind * blind)))
-            {
-                out->push_back(p);
-            }
-        }
+        if (i % filter_num != 0)
+            continue;
+
+        const auto &cur_pt = pcl_pts.points[i];
+        if (std::isnan(cur_pt.x) || std::isnan(cur_pt.y) || std::isnan(cur_pt.z))
+            continue;
+
+        double range = cur_pt.x * cur_pt.x + cur_pt.y * cur_pt.y + cur_pt.z * cur_pt.z;
+        if (range < (blind * blind))
+            continue;
+
+        fastlio::PointType p;
+        p.x = cur_pt.x;
+        p.y = cur_pt.y;
+        p.z = cur_pt.z;
+        p.intensity = cur_pt.intensity;
+        p.curvature = (cur_pt.timestamp - pcl_pts.points[0].timestamp) * 1000.0; // s -> ms
+        out->push_back(p);
     }
+    return true;
 }
 
-bool MeasureGroup::syncPackage(ImuData &imu_data, LivoxData &livox_data)
+bool MeasureGroup::syncPackage(ImuData &imu_data, RobosenseM1Data &lidar_data)
 {
-    if (imu_data.buffer.empty() || livox_data.buffer.empty())
+    if (imu_data.buffer.empty() || lidar_data.buffer.empty())
+    {
+        LOG_DEBUG("imu or lidar buffer empty!");
         return false;
-
+    }
     if (!lidar_pushed)
     {
-        lidar = livox_data.buffer.front();
-        lidar_time_begin = livox_data.time_buffer.front();
-        lidar_time_end = lidar_time_begin + lidar->points.back().curvature / double(1000);
         lidar_pushed = true;
+        lidar = lidar_data.buffer.front();
+        lidar_time_begin = lidar_data.time_buffer.front();
+        lidar_time_end = lidar_time_begin + lidar->points.back().curvature / double(1000);
+    }
+    if (imu_data.last_timestamp < lidar_time_end)
+    {
+        LOG_DEBUG("imu blocked, last timestamp: %f, lidar time end: %f", imu_data.last_timestamp, lidar_time_end);
+        return false;
     }
 
-    if (imu_data.last_timestamp < lidar_time_end)
-        return false;
-    double imu_time = imu_data.buffer.front().timestamp;
     imus.clear();
+    double imu_time = imu_data.buffer.front().timestamp;
     while (!imu_data.buffer.empty() && (imu_time < lidar_time_end))
     {
         imu_time = imu_data.buffer.front().timestamp;
@@ -183,9 +205,9 @@ bool MeasureGroup::syncPackage(ImuData &imu_data, LivoxData &livox_data)
         imus.push_back(imu_data.buffer.front());
         imu_data.buffer.pop_front();
     }
-    livox_data.buffer.pop_front();
-    livox_data.time_buffer.pop_front();
     lidar_pushed = false;
+    lidar_data.buffer.pop_front();
+    lidar_data.time_buffer.pop_front();
     return true;
 }
 

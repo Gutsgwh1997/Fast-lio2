@@ -1,23 +1,25 @@
 #include "lio_builder/lio_builder.h"
 
-// #include <chrono>
 namespace fastlio
 {
     /**
      * @brief
      */
     LIOBuilder::LIOBuilder(LioParams &params) : params_(params)
-    { // 初始化ESIKF
-        kf_ = std::make_shared<esekfom::esekf<state_ikfom, 12, input_ikfom>>();
+    {
+        // * 1、初始化ESIKF
+        kf_ = std::make_shared<air_slam::esekfom::esekf>();
+
+        kf_r_ = std::make_shared<esekfom::esekf<state_ikfom, 12, input_ikfom>>();
         std::vector<double> epsi(23, 0.001);
-        kf_->init_dyn_share(
+        kf_r_->init_dyn_share(
             get_f, df_dx, df_dw,
             [this](state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data)
             { sharedUpdateFunc(s, ekfom_data); },
             params.esikf_max_iteration, epsi.data());
 
-        // 初始化IMUProcessor
-        imu_processor_ = std::make_shared<IMUProcessor>(kf_);
+        // *2、初始化IMUProcessor
+        imu_processor_ = std::make_shared<IMUProcessor>(kf_r_);
         imu_processor_->setCov(params.imu_gyro_cov, params.imu_acc_cov, params.imu_gyro_bias_cov, params.imu_acc_bias_cov);
         Eigen::Matrix3d rot_ext;
         Eigen::Vector3d pos_ext;
@@ -27,7 +29,8 @@ namespace fastlio
         pos_ext << params.imu_ext_pos[0], params.imu_ext_pos[1], params.imu_ext_pos[2];
         imu_processor_->setExtParams(rot_ext, pos_ext);
         imu_processor_->setAlignGravity(params.align_gravity);
-        // 初始化KDTree
+
+        // *3、初始化KDTree
         ikdtree_ = std::make_shared<KD_TREE<PointType>>();
         ikdtree_->set_downsample_param(params.resolution);
         // 初始化点云采样器
@@ -56,13 +59,13 @@ namespace fastlio
      * @param cloud: lidar系下的点云
      *
      */
-    PointCloudXYZI::Ptr LIOBuilder::transformToWorld(const PointCloudXYZI::Ptr cloud)
+    PointCloudXYZI::Ptr LIOBuilder::transformToWorld(const PointCloudXYZI::Ptr &cloud)
     {
         PointCloudXYZI::Ptr cloud_world(new PointCloudXYZI);
-        Eigen::Matrix3d rot = kf_->get_x().rot.toRotationMatrix();
-        Eigen::Vector3d pos = kf_->get_x().pos;
-        Eigen::Matrix3d rot_ext = kf_->get_x().offset_R_L_I.toRotationMatrix();
-        Eigen::Vector3d pos_ext = kf_->get_x().offset_T_L_I;
+        Eigen::Matrix3d rot = kf_r_->get_x().rot.toRotationMatrix();
+        Eigen::Vector3d pos = kf_r_->get_x().pos;
+        Eigen::Matrix3d rot_ext = kf_r_->get_x().offset_R_L_I.toRotationMatrix();
+        Eigen::Vector3d pos_ext = kf_r_->get_x().offset_T_L_I;
         cloud_world->reserve(cloud->size());
         for (auto &p : cloud->points)
         {
@@ -84,27 +87,30 @@ namespace fastlio
     void LIOBuilder::mapping(const MeasureGroup &meas)
     {
         if (!imu_processor_->operator()(meas, cloud_undistorted_lidar_))
+        {
             return;
+        }
 
         down_size_filter_.setInputCloud(cloud_undistorted_lidar_);
         down_size_filter_.filter(*cloud_down_lidar_);
 
-        if (status == Status::INITIALIZE)
+        if (status_ == Status::INITIALIZE)
         {
             // 初始化ikd_tree
             PointCloudXYZI::Ptr point_world = transformToWorld(cloud_down_lidar_);
             ikdtree_->Build(point_world->points);
-            status = Status::MAPPING;
+            status_ = Status::MAPPING;
+            LOG_INFO("Ikd tree init finish, mapping start!");
             return;
         }
 
         trimMap();
         // auto tic = std::chrono::system_clock::now();
         double solve_H_time = 0;
-        kf_->update_iterated_dyn_share_modified(0.001, solve_H_time);
+        kf_r_->update_iterated_dyn_share_modified(0.001, solve_H_time);
         // auto toc = std::chrono::system_clock::now();
         // std::chrono::duration<double> duration = toc - tic;
-        // std::cout << duration.count() * 1000 << std::endl;
+        // std::cout << duration.count() * 1000 << "ms" << std::endl;
         increaseMap();
     }
 
@@ -114,7 +120,7 @@ namespace fastlio
     void LIOBuilder::trimMap()
     {
         local_map_.cub_to_rm.clear();
-        state_ikfom state = kf_->get_x();
+        state_ikfom state = kf_r_->get_x();
         Eigen::Vector3d pos_lidar = state.pos + state.rot.toRotationMatrix() * state.offset_T_L_I;
         // 根据lidar的位置进行局部地图的初始化
         if (!local_map_.is_initialed)
@@ -125,11 +131,12 @@ namespace fastlio
                 local_map_.local_map_corner.vertex_max[i] = pos_lidar[i] + local_map_.cube_len / 2.0;
             }
             local_map_.is_initialed = true;
+            LOG_INFO("Local map init finish, cube_len: %f.", local_map_.cube_len);
             return;
         }
 
-        float dist_to_map_edge[3][2];
         bool need_move = false;
+        float dist_to_map_edge[3][2];
         double det_thresh = local_map_.move_thresh * local_map_.det_range;
         // 如果靠近地图边缘 则需要进行地图的移动
         for (int i = 0; i < 3; i++)
@@ -145,8 +152,7 @@ namespace fastlio
 
         BoxPointType new_corner, temp_corner;
         new_corner = local_map_.local_map_corner;
-        float mov_dist = std::max((local_map_.cube_len - 2.0 * local_map_.move_thresh * local_map_.det_range) * 0.5 * 0.9,
-                                  double(local_map_.det_range * (local_map_.move_thresh - 1)));
+        float mov_dist = std::max((local_map_.cube_len - 2.0 * det_thresh) * 0.5 * 0.9, double(local_map_.det_range * (local_map_.move_thresh - 1)));
         // 更新局部地图
         for (int i = 0; i < 3; i++)
         {
@@ -173,7 +179,9 @@ namespace fastlio
 
         // 删除局部地图之外的点云
         if (local_map_.cub_to_rm.size() > 0)
+        {
             ikdtree_->Delete_Point_Boxes(local_map_.cub_to_rm);
+        }
         return;
     }
 
@@ -182,7 +190,7 @@ namespace fastlio
      */
     void LIOBuilder::increaseMap()
     {
-        if (status == Status::INITIALIZE)
+        if (status_ == Status::INITIALIZE)
             return;
         if (cloud_down_lidar_->empty())
             return;
@@ -195,7 +203,7 @@ namespace fastlio
         point_to_add.reserve(size);
         point_no_need_downsample.reserve(size);
 
-        state_ikfom state = kf_->get_x();
+        state_ikfom state = kf_r_->get_x();
         for (int i = 0; i < size; i++)
         {
             const PointType &p = cloud_down_lidar_->points[i];
@@ -313,7 +321,7 @@ namespace fastlio
         if (effect_feat_num < 1)
         {
             share_data.valid = false;
-            ROS_INFO("NO Effective Points!");
+            LOG_WARN("No Effective Points From %d Input Points!", size);
             return;
         }
 
@@ -347,8 +355,8 @@ namespace fastlio
     PointCloudXYZI::Ptr LIOBuilder::cloudUndistortedBody()
     {
         PointCloudXYZI::Ptr cloud_undistorted_body(new PointCloudXYZI);
-        Eigen::Matrix3d rot = kf_->get_x().offset_R_L_I.toRotationMatrix();
-        Eigen::Vector3d pos = kf_->get_x().offset_T_L_I;
+        Eigen::Matrix3d rot = kf_r_->get_x().offset_R_L_I.toRotationMatrix();
+        Eigen::Vector3d pos = kf_r_->get_x().offset_T_L_I;
         cloud_undistorted_body->reserve(cloud_undistorted_lidar_->size());
         for (auto &p : cloud_undistorted_lidar_->points)
         {
@@ -367,8 +375,8 @@ namespace fastlio
     PointCloudXYZI::Ptr LIOBuilder::cloudDownBody()
     {
         PointCloudXYZI::Ptr cloud_down_body(new PointCloudXYZI);
-        Eigen::Matrix3d rot = kf_->get_x().offset_R_L_I.toRotationMatrix();
-        Eigen::Vector3d pos = kf_->get_x().offset_T_L_I;
+        Eigen::Matrix3d rot = kf_r_->get_x().offset_R_L_I.toRotationMatrix();
+        Eigen::Vector3d pos = kf_r_->get_x().offset_T_L_I;
         cloud_down_body->reserve(cloud_down_lidar_->size());
         for (auto &p : cloud_down_lidar_->points)
         {
@@ -383,13 +391,12 @@ namespace fastlio
         }
         return cloud_down_body;
     }
-    
+
     void LIOBuilder::reset()
     {
-
-        status = Status::INITIALIZE;
+        status_ = Status::INITIALIZE;
         imu_processor_->reset();
-        state_ikfom state = kf_->get_x();
+        state_ikfom state = kf_r_->get_x();
         state.rot.setIdentity();
         state.pos.setZero();
         state.vel.setZero();
@@ -397,7 +404,7 @@ namespace fastlio
         state.offset_T_L_I.setZero();
         state.ba.setZero();
         state.bg.setZero();
-        kf_->change_x(state);
+        kf_r_->change_x(state);
         ikdtree_.reset(new KD_TREE<PointType>);
     }
 }
