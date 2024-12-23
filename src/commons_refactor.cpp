@@ -45,8 +45,8 @@ namespace air_slam
         double timestamp = msg->header.stamp.toSec();
         if (timestamp < last_timestamp)
         {
-            ROS_WARN("imu loop back, clear buffer, last_timestamp: %f  current_timestamp: %f", last_timestamp, timestamp);
             buffer.clear();
+            LOG_WARN("imu loop back, clear buffer, last_timestamp: %f  current_timestamp: %f", last_timestamp, timestamp);
         }
         last_timestamp = timestamp;
         buffer.emplace_back(timestamp,
@@ -64,9 +64,9 @@ namespace air_slam
         double timestamp = msg->header.stamp.toSec();
         if (timestamp < last_timestamp)
         {
-            ROS_WARN("robosense m1 lidat loop back, clear buffer, last_timestamp: %f  current_timestamp: %f", last_timestamp, timestamp);
             buffer.clear();
             time_buffer.clear();
+            LOG_WARN("robosense m1 lidat loop back, clear buffer, last_timestamp: %f  current_timestamp: %f", last_timestamp, timestamp);
         }
         last_timestamp = timestamp;
         PointCloudXYZI::Ptr ptr(new PointCloudXYZI());

@@ -102,8 +102,8 @@ void ImuData::callback(const sensor_msgs::Imu::ConstPtr &msg)
     double timestamp = msg->header.stamp.toSec();
     if (timestamp < last_timestamp)
     {
-        ROS_WARN("imu loop back, clear buffer, last_timestamp: %f  current_timestamp: %f", last_timestamp, timestamp);
         buffer.clear();
+        LOG_WARN("imu loop back, clear buffer, last_timestamp: %f  current_timestamp: %f", last_timestamp, timestamp);
     }
     last_timestamp = timestamp;
     buffer.emplace_back(timestamp,
@@ -179,7 +179,7 @@ bool MeasureGroup::syncPackage(ImuData &imu_data, RobosenseM1Data &lidar_data)
 {
     if (imu_data.buffer.empty() || lidar_data.buffer.empty())
     {
-        LOG_DEBUG("imu or lidar buffer empty!");
+        LOG_DEBUG("imu or lidar buffer empty, imu size: %ld, lidar size: %ld", imu_data.buffer.size(), lidar_data.buffer.size());
         return false;
     }
     if (!lidar_pushed)

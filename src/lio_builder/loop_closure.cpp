@@ -166,7 +166,7 @@ namespace fastlio
         if (!icp_->hasConverged() || score > loop_params_.loop_icp_thresh)
             return;
 
-        ROS_INFO("Detected LOOP: %d %d %f", pre_index, cur_index, score);
+        LOG_INFO("Detected LOOP: %d %d %f.", pre_index, cur_index, score);
         shared_data_->loop_history.emplace_back(pre_index, cur_index);
         loop_found_ = true;
 
