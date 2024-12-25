@@ -149,7 +149,7 @@ bool RobosenseM1Data::robosense_m1_2pcl(const sensor_msgs::PointCloud2::ConstPtr
         if (range < (blind * blind)) continue;
 
         // todo::镜面反射处理
-        if (cur_pt.intensity > 50) continue;
+        if (cur_pt.intensity < min_pt_intensity || cur_pt.intensity > max_pt_intensity) continue;
 
         fastlio::PointType p;
         p.x = cur_pt.x;
@@ -233,8 +233,6 @@ geometry_msgs::TransformStamped eigen2Transform(const Eigen::Matrix3d &rot, cons
     transform.transform.translation.y = pos(1);
     transform.transform.translation.z = pos(2);
     Eigen::Quaterniond q = Eigen::Quaterniond(rot);
-    // std::cout << rot << std::endl;
-    // std::cout << q.w() << " " << q.x() << " " << q.y() << " " << q.z() << std::endl;
     transform.transform.rotation.w = q.w();
     transform.transform.rotation.x = q.x();
     transform.transform.rotation.y = q.y();

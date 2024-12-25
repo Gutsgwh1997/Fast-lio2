@@ -155,6 +155,8 @@ struct RobosenseM1Data {
     std::deque<double> time_buffer;
     double blind = 0.6;
     int filter_num = 2;
+    int min_pt_intensity = 0;
+    int max_pt_intensity = 255;
     double last_timestamp = 0;
     void callback(const sensor_msgs::PointCloud2::ConstPtr &msg);
     bool robosense_m1_2pcl(const sensor_msgs::PointCloud2::ConstPtr &msg, fastlio::PointCloudXYZI::Ptr &out,

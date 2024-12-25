@@ -69,6 +69,9 @@ class MapBuilderROS {
 
         nh_.param<double>("lio_builder/blind", rs_m1_data_.blind, 0.5);
         nh_.param<int>("lio_builder/filter_num", rs_m1_data_.filter_num, 2);
+        nh_.param<int>("lio_builder/min_pt_intensity", rs_m1_data_.min_pt_intensity, 0);
+        nh_.param<int>("lio_builder/max_pt_intensity", rs_m1_data_.max_pt_intensity, 255);
+        nh_.param<int>("lio_builder/filter_num", rs_m1_data_.filter_num, 2);
         nh_.param<double>("lio_builder/det_range", lio_params_.det_range, 100.0);
         nh_.param<double>("lio_builder/cube_len", lio_params_.cube_len, 500.0);
         nh_.param<double>("lio_builder/resolution", lio_params_.resolution, 0.1);

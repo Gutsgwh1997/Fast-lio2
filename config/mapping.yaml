@@ -14,6 +14,9 @@ lio_builder:
   blind: 0.6
   # 单帧点云中每隔多少个点取一个点
   filter_num: 2
+  # 单帧点云中intensity在此区间则保留
+  min_pt_intensity: 15
+  max_pt_intensity: 255
   # 局部地图维护长度
   cube_len: 500.0
   # 单帧点云观测范围
