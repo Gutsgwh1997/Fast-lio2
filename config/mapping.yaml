@@ -5,11 +5,15 @@ imu_topic: /imu/data_raw
 rs_m1_topic: /os1_points
 
 # 回环检测线程频率
-loop_rate: 1.0
+loop_rate: 5.0
 # 局部构图线程频率
-local_rate: 20.0
+local_rate: 60.0
 
 lio_builder:
+  # 小于该距离的点云从单帧中去掉
+  blind: 0.6
+  # 单帧点云中每隔多少个点取一个点
+  filter_num: 2
   # 局部地图维护长度
   cube_len: 500.0
   # 单帧点云观测范围
@@ -28,8 +32,8 @@ loop_closure:
   rad_thresh: 0.2
   dist_thresh: 1.0
   time_thresh: 30.0
-  loop_pose_search_radius: 20.0
+  loop_pose_search_radius: 10.0
   loop_pose_index_thresh: 20
   submap_resolution: 0.25
-  submap_search_num: 25
-  loop_icp_thresh: 0.1
+  submap_search_num: 20
+  loop_icp_thresh: 0.015

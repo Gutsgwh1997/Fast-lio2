@@ -33,8 +33,7 @@ roslaunch fastlio localize.launch
 ## 服务脚本
 1. 保存地图
 ```shell
-rosservice call /save_map "save_path: 'you_pcd_save_path.pcd'
-resolution: 0.0"
+rosservice call /save_map "{save_path: 'you_pcd_save_path.pcd', resolution: 0.05}"
 ```
 **目前resolution没用(需要降采样，可离线自行降采样)**
 

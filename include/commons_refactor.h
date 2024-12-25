@@ -141,7 +141,7 @@ namespace air_slam
 
     sensor_msgs::PointCloud2 pcl2msg(PointCloudXYZI::Ptr inp, std::string &frame_id, const double &timestamp);
 
-    Eigen::Vector3d rotate2rpy(Eigen::Matrix3d &rot);
+    Eigen::Vector3d rotate2rpy(const Eigen::Matrix3d &rot);
 
 } // namespace air_slam
 

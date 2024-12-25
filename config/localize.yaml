@@ -4,8 +4,10 @@ body_frame: body
 imu_topic: /imu/data_raw
 rs_m1_topic: /os1_points
 
-local_rate: 30.0
+local_rate: 20.0
 loop_rate: 1.0
+
+# 是否pub地图点云
 publish_map_cloud: true
 
 lio_builder:
@@ -20,9 +22,9 @@ lio_builder:
 localizer:
   refine_resolution: 0.2
   rough_resolution: 0.5
-  refine_iter: 5
-  rough_iter: 10
-  thresh: 0.15
-  xy_offset: 1.0
-  yaw_offset: 0
-  yaw_resolution: 0.5
+  refine_iter: 20
+  rough_iter: 50
+  thresh: 0.12
+  xy_offset: 2.0
+  yaw_offset: 5
+  yaw_resolution: 2.0

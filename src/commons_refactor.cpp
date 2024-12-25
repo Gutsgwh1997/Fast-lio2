@@ -186,7 +186,7 @@ namespace air_slam
         return transform;
     }
 
-    Eigen::Vector3d rotate2rpy(Eigen::Matrix3d &rot)
+    Eigen::Vector3d rotate2rpy(const Eigen::Matrix3d &rot)
     {
         double roll = std::atan2(rot(2, 1), rot(2, 2));
         double pitch = asin(-rot(2, 0));

@@ -1,16 +1,16 @@
 cmake_minimum_required(VERSION 3.0.2)
-project(fastlio)
+project(fastlio2_sam_lc)
 
 
-add_compile_options(-std=c++14 )
-add_compile_options(-std=c++14 )
-set( CMAKE_CXX_FLAGS "-std=c++14 -O3" )
+add_compile_options(-std=c++17)
+add_compile_options(-std=c++17)
+set(CMAKE_CXX_FLAGS "-std=c++17 -O3" )
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fexceptions" )
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14 -pthread -std=c++0x -std=c++14 -fexceptions")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -pthread -std=c++0x -std=c++17 -fexceptions")
 
 
 add_definitions(-DUSE_ROS1)

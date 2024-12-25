@@ -19,7 +19,6 @@
 #include <pcl/kdtree/kdtree_flann.h>
 
 #include "commons.h"
-#include "localizer/icp_localizer.h"
 
 namespace fastlio
 {
