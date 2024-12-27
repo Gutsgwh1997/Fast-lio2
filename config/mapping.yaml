@@ -39,4 +39,4 @@ loop_closure:
   loop_pose_index_thresh: 20
   submap_resolution: 0.25
   submap_search_num: 20
-  loop_icp_thresh: 0.01
+  loop_icp_thresh: 0.015

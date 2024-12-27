@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.0.2)
 project(fastlio2_sam_lc)
 
+add_subdirectory(third_party/Sophus)
 
 add_compile_options(-std=c++17)
 add_compile_options(-std=c++17)
@@ -37,7 +38,7 @@ endif()
 
 find_package(OpenMP QUIET)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}   ${OpenMP_C_FLAGS}")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
 
 
 find_package(catkin REQUIRED COMPONENTS
@@ -55,8 +56,8 @@ find_package(catkin REQUIRED COMPONENTS
 
 find_package(PCL REQUIRED)
 find_package(Eigen3 REQUIRED)
+# 4.1.1
 find_package(GTSAM REQUIRED)
-find_package(Sophus REQUIRED)
 
 add_service_files(
   FILES
@@ -67,7 +68,6 @@ add_service_files(
   SlamStart.srv
   SlamRelocCheck.srv
 )
-
 
 generate_messages(
   DEPENDENCIES
@@ -88,7 +88,6 @@ include_directories(
   ${catkin_INCLUDE_DIRS}
   ${EIGEN3_INCLUDE_DIR}
   ${PCL_INCLUDE_DIRS}
-  ${Sophus_INCLUDE_DIRS}
 )
 
 set(COMMON_SRC src/commons.cpp src/commons_refactor.cpp)
@@ -99,14 +98,14 @@ set(ICPLOCALIZER_SRC src/localizer/icp_localizer.cpp)
 set(SRC_LIST ${COMMON_SRC} ${KDTREE_SRC} ${IEKF_SRC} ${LIOBUILDER_SRC_LIST} ${ICPLOCALIZER_SRC})
 
 
-
 add_executable(map_builder_node src/map_builder_node.cpp ${SRC_LIST})
 target_link_libraries(map_builder_node
-  ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${Sophus_LIBRARIES} gtsam
+  ${catkin_LIBRARIES} ${PCL_LIBRARIES} Sophus gtsam
 )
-
+add_dependencies(map_builder_node ${PROJECT_NAME}_gencpp)
 
 add_executable(localizer_node src/localizer_node.cpp ${SRC_LIST})
 target_link_libraries(localizer_node
-  ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${Sophus_LIBRARIES} gtsam
+  ${catkin_LIBRARIES} ${PCL_LIBRARIES} Sophus gtsam
 )
+add_dependencies(localizer_node ${PROJECT_NAME}_gencpp)

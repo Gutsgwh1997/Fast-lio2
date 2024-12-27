@@ -10,11 +10,11 @@
 #include <thread>
 
 #include "commons.h"
-#include "fastlio/MapConvert.h"
-#include "fastlio/SlamHold.h"
-#include "fastlio/SlamReLoc.h"
-#include "fastlio/SlamRelocCheck.h"
-#include "fastlio/SlamStart.h"
+#include "fastlio2_sam_lc/MapConvert.h"
+#include "fastlio2_sam_lc/SlamHold.h"
+#include "fastlio2_sam_lc/SlamReLoc.h"
+#include "fastlio2_sam_lc/SlamRelocCheck.h"
+#include "fastlio2_sam_lc/SlamStart.h"
 #include "lio_builder/lio_builder.h"
 #include "localizer/icp_localizer.h"
 
@@ -200,7 +200,7 @@ class LocalizerROS {
         map_cloud_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("map_cloud", 1000);
     }
 
-    bool relocCallback(fastlio::SlamReLoc::Request &req, fastlio::SlamReLoc::Response &res) {
+    bool relocCallback(fastlio2_sam_lc::SlamReLoc::Request &req, fastlio2_sam_lc::SlamReLoc::Response &res) {
         std::string map_path = req.pcd_path;
         float x = req.x;
         float y = req.y;
@@ -227,7 +227,7 @@ class LocalizerROS {
         return true;
     }
 
-    bool mapConvertCallback(fastlio::MapConvert::Request &req, fastlio::MapConvert::Response &res) {
+    bool mapConvertCallback(fastlio2_sam_lc::MapConvert::Request &req, fastlio2_sam_lc::MapConvert::Response &res) {
         pcl::PCDReader reader;
         pcl::PointCloud<pcl::PointXYZI>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZI>);
         reader.read(req.map_path, *cloud);
@@ -245,7 +245,7 @@ class LocalizerROS {
         return true;
     }
 
-    bool slamHoldCallback(fastlio::SlamHold::Request &req, fastlio::SlamHold::Response &res) {
+    bool slamHoldCallback(fastlio2_sam_lc::SlamHold::Request &req, fastlio2_sam_lc::SlamHold::Response &res) {
         shared_data_->service_mutex.lock();
         shared_data_->halt_flag = true;
         shared_data_->reset_flag = true;
@@ -255,7 +255,7 @@ class LocalizerROS {
         return true;
     }
 
-    bool slamStartCallback(fastlio::SlamStart::Request &req, fastlio::SlamStart::Response &res) {
+    bool slamStartCallback(fastlio2_sam_lc::SlamStart::Request &req, fastlio2_sam_lc::SlamStart::Response &res) {
         shared_data_->service_mutex.lock();
         shared_data_->halt_flag = false;
         shared_data_->service_mutex.unlock();
@@ -264,7 +264,7 @@ class LocalizerROS {
         return true;
     }
 
-    bool slamRelocCheckCallback(fastlio::SlamRelocCheck::Request &req, fastlio::SlamRelocCheck::Response &res) {
+    bool slamRelocCheckCallback(fastlio2_sam_lc::SlamRelocCheck::Request &req, fastlio2_sam_lc::SlamRelocCheck::Response &res) {
         res.status = shared_data_->service_success;
         return true;
     }

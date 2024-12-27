@@ -18,7 +18,7 @@
 #include <vector>
 
 #include "commons.h"
-#include "fastlio/SaveMap.h"
+#include "fastlio2_sam_lc/SaveMap.h"
 #include "lio_builder/lio_builder.h"
 #include "lio_builder/loop_closure.h"
 #include "utility/file_utility.hpp"
@@ -31,7 +31,8 @@ void signalHandler(int signum) {
 }
 
 void WriteKittiPoseText(std::ofstream &ofs, double time, const Eigen::Matrix3d &rot, const Eigen::Vector3d &pos) {
-    // ofs << std::fixed << std::setprecision(6) << time << " " << rot(0, 0) << " " << rot(0, 1) << " " << rot(0, 2) << " "
+    // ofs << std::fixed << std::setprecision(6) << time << " " << rot(0, 0) << " " << rot(0, 1) << " " << rot(0, 2) <<
+    // " "
     //     << pos[0] << " " << rot(1, 0) << " " << rot(1, 1) << " " << rot(1, 2) << " " << pos[1] << " " << rot(2, 0)
     //     << " " << rot(2, 1) << " " << rot(2, 2) << " " << pos[2] << std::endl;
 
@@ -227,9 +228,7 @@ class MapBuilderROS {
         loop_mark_pub_.publish(marker_array);
     }
 
-    bool saveMapCallback(fastlio::SaveMap::Request &req, fastlio::SaveMap::Response &res) {
-        namespace fs = std::filesystem;
-
+    bool saveMapCallback(fastlio2_sam_lc::SaveMap::Request &req, fastlio2_sam_lc::SaveMap::Response &res) {
         float resolution = req.resolution;
         std::string save_dir = req.save_path;
         std::string time_str = air_slam::FileSystem::getTimeStamp();
